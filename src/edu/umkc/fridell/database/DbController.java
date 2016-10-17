@@ -18,16 +18,21 @@ import java.util.Scanner;
 
 
 public class DbController {
-  private static DbController ourInstance = new DbController();
-  private static DbConnection connection = new DbConnection();
+  private static DbController ourInstance;
+  private static DbConnection connection;
 
-  public static DbController getInstance() {
+  public static synchronized DbController getInstance() {
+    if (ourInstance == null) {
+      ourInstance = new DbController();
+    }
     return ourInstance;
   }
 
   private DbController() {
+    connection = new DbConnection();
   }
 
+  @Deprecated
   public Connection connection() {
     return connection.connection;
   }
@@ -76,6 +81,19 @@ public class DbController {
 
   public void rollback() throws SQLException {
     connection.rollback();
+  }
+
+  public int count(String table) {
+    try {
+      Statement stmt = createStatement();
+      ResultSet rs = stmt.executeQuery("SELECT COUNT(*) as cnt FROM " + table);
+      if (rs.next()) {
+        return rs.getInt("cnt");
+      }
+    } catch (SQLException e) {
+      e.printStackTrace();
+    }
+    return -1;
   }
 
   private static class DbConnection {

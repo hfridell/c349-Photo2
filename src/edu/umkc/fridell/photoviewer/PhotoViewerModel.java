@@ -1,27 +1,56 @@
 package edu.umkc.fridell.photoviewer;
 
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonParser;
+import com.google.gson.reflect.TypeToken;
+
 import javax.swing.*;
 
 import java.io.File;
-import java.io.FileOutputStream;
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.io.IOException;
-import java.io.ObjectOutputStream;
+import java.lang.reflect.Type;
+import java.sql.SQLException;
+import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.LinkedList;
+
+import edu.umkc.fridell.database.DbController;
+
+import static java.util.ResourceBundle.getBundle;
 
 public class PhotoViewerModel {
 
+  private Photo currentPhoto;
   private PhotoViewerLayout layout;
   private int photoCount = 0;
+
+  private int countPhotos() {
+    int count = DbController.getInstance().count("Photo");
+    if (count != -1) {
+      return count;
+    }
+    else {
+      return 0;
+    }
+  }
+
   private int currentPhotoNumber = 0;
   private ArrayList<Photo> photos = new ArrayList<>();
   private JFileChooser fileChooser = new JFileChooser();
 
   public PhotoViewerModel(PhotoViewerLayout layout) {
     this.layout = layout;
+    photoCount = countPhotos();
+    if (photoCount != 0) {
+      currentPhotoNumber = 1;
+    }
+    updateUi();
   }
 
   public void delete() {
-    photos.remove(currentPhotoNumber - 1);
     photoCount--;
     prevButton();
   }
@@ -32,56 +61,66 @@ public class PhotoViewerModel {
     if (returnVal == JFileChooser.APPROVE_OPTION) {
       File file = fileChooser.getSelectedFile();
       try {
-        photos.add(new Photo(file));
+        Photo newPhoto = new Photo(file, currentPhotoNumber);
+        save();
+        currentPhoto = newPhoto;
+
+        photoCount++;
+        nextButton();
+        PhotoWriter writer = new PhotoWriter(DbController.getInstance());
+        writer.write(newPhoto);
       } catch (IOException e) {
+        e.printStackTrace();
+      } catch (SQLException e) {
         e.printStackTrace();
       }
     }
-    photoCount++;
-    nextButton();
+  updateUi();
   }
 
   public void save() {
-    photos.get(currentPhotoNumber - 1).setDate(layout.dateTextField.getText());
-    photos.get(currentPhotoNumber - 1).setDescription(layout.descriptionTextArea.getText());
-    ObjectOutputStream oos;
+    savePhotoInfo();
+    PhotoWriter writer = new PhotoWriter(DbController.getInstance());
     try {
-      oos = new ObjectOutputStream(new FileOutputStream(
-          photos.get(currentPhotoNumber - 1).getName() + ".txt"));
-      oos.writeObject(photos.get(currentPhotoNumber - 1));
-      oos.close();
-    } catch (IOException e) {
+      if (currentPhotoNumber > 0) {
+        writer.update(currentPhoto);
+      }
+    } catch (SQLException e) {
       e.printStackTrace();
     }
   }
 
+  private void savePhotoInfo() {
+    if (currentPhoto != null) {
+      if (!layout.descriptionTextArea.getText().equals(getBundle("PhotoAlbumStrings").getString("DefaultDescription"))) {
+        currentPhoto.setDescription(layout.descriptionTextArea.getText());
+      }
+      if (!layout.dateTextField.getText().equals(getBundle("PhotoAlbumStrings").getString("DateFormat"))) {
+        currentPhoto.setDate(LocalDate.parse(layout.dateTextField.getText()));
+      }
+      currentPhoto.setOrder(currentPhotoNumber);
+    }
+  }
+
   public void prevButton() {
-    currentPhotoNumber--;
-    if (currentPhotoNumber < photoCount) {
-      // Show previous photo
-      layout.nextButton.setEnabled(true);
+    savePhotoInfo();
+    if (currentPhotoNumber > 1){
+      currentPhotoNumber--;
     }
-    if (currentPhotoNumber <= 1) {
-      layout.prevButton.setEnabled(false);
-    }
-    if (photoCount <= 1) {
-      layout.nextButton.setEnabled(false);
-    }
-    updateUI();
+    updateUi();
   }
 
   public void nextButton() {
+    savePhotoInfo();
     if (currentPhotoNumber < photoCount) {
-      // Show next photo
       currentPhotoNumber++;
     }
-    if (currentPhotoNumber > 1) {
-      layout.prevButton.setEnabled(true);
-    }
-    if (currentPhotoNumber == photoCount) {
-      layout.nextButton.setEnabled(false);
-    }
-    updateUI();
+    updateUi();
+  }
+
+  private void updateButtons() {
+    layout.nextButton.setEnabled(currentPhotoNumber != photoCount);
+    layout.prevButton.setEnabled(currentPhotoNumber > 1);
   }
 
   public String getPhotoCount() {
@@ -92,45 +131,34 @@ public class PhotoViewerModel {
     return Integer.toString(currentPhotoNumber);
   }
 
-  public String getDescription() {
-    if (photoCount <= 0) {
-      return "Add a Photo to View";
-    } else {
-      return photos.get(currentPhotoNumber - 1).getDescription();
-    }
-  }
 
-  public String getPhotoLocation() {
-    if (photoCount <= 0) {
-      return "";
-    } else {
-      return photos.get(currentPhotoNumber - 1).getLocation();
-    }
-  }
-
-  public String getDate() {
-    return photos.get(currentPhotoNumber - 1).getDate();
-  }
-
-  private void updateUI() {
-    if (photoCount == 0) {
+  private void updateUi() {
+    updateButtons();
+    if (photoCount == 0 && currentPhoto == null) {
       layout.imageIcon = new ImageIcon("");
-      layout.pictureCountLabel.setText(" of " + getPhotoCount());
-      layout.pictureNumberTextField.setText(Integer.toString(currentPhotoNumber));
-      layout.descriptionTextArea.setText(getDescription());
-      layout.dateTextField.setText("mm/dd/yyyy");
+      layout.descriptionTextArea.setText(getBundle("PhotoAlbumStrings").getString("DefaultDescription"));
+      layout.dateTextField = new JTextField(getBundle("PhotoAlbumStrings").getString("DateFormat"));
     } else {
-      layout.imageIcon = photos.get(currentPhotoNumber - 1).getPhoto();
-      layout.imageLabel.setIcon(layout.imageIcon);
-      layout.pictureCountLabel.setText(" of " + getPhotoCount());
-      layout.pictureNumberTextField.setText(Integer.toString(currentPhotoNumber));
-      if (photos.get(currentPhotoNumber - 1).getDate() == null) {
-        layout.dateTextField.setText("mm/dd/yyyy");
+      if (getPhoto(currentPhotoNumber) == null){
+        layout.imageIcon = new ImageIcon(currentPhoto.getContent());
+        layout.imageLabel = new JLabel(currentPhoto.getName());
       } else {
-        layout.dateTextField.setText(photos.get(currentPhotoNumber - 1).getDate());
+        currentPhoto = getPhoto(currentPhotoNumber);
+        layout.imageIcon = new ImageIcon(currentPhoto.getContent());
+        layout.imageLabel.setIcon(layout.imageIcon);
       }
-      layout.descriptionTextArea.setText(photos.get(currentPhotoNumber - 1).getDescription());
+
+      if (currentPhoto.getDate() == null) {
+        layout.dateTextField.setText(getBundle("PhotoAlbumStrings").getString("DateFormat"));
+      } else {
+        layout.dateTextField.setText(currentPhoto.getDate().toString());
+      }
+
+      layout.descriptionTextArea.setText(currentPhoto.getDescription());
     }
+
+    layout.pictureNumberTextField.setText(Integer.toString(currentPhotoNumber));
+    layout.pictureCountLabel.setText(getBundle("PhotoAlbumStrings").getString(" of ") + getPhotoCount());
   }
 
   public void search() {
@@ -138,6 +166,16 @@ public class PhotoViewerModel {
     if (search <= photoCount && search > 0) {
       currentPhotoNumber = search;
     }
-    updateUI();
+    updateUi();
+  }
+
+  private Photo getPhoto(int x) {
+    PhotoReader reader = new PhotoReader(DbController.getInstance());
+    try {
+      return reader.read(x);
+    } catch (SQLException e) {
+      e.printStackTrace();
+    }
+    return null;
   }
 }
