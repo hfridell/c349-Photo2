@@ -21,15 +21,15 @@ public class DbController {
   private static DbController ourInstance;
   private static DbConnection connection;
 
+  private DbController() {
+    connection = new DbConnection();
+  }
+
   public static synchronized DbController getInstance() {
     if (ourInstance == null) {
       ourInstance = new DbController();
     }
     return ourInstance;
-  }
-
-  private DbController() {
-    connection = new DbConnection();
   }
 
   @Deprecated
@@ -65,6 +65,13 @@ public class DbController {
     }
     statement.close();
     return result;
+  }
+
+  public void delete(String from, String where) throws SQLException {
+    Statement statement = createStatement();
+    String command = "DELETE FROM " + from + " WHERE " + where;
+    statement.execute(command);
+    statement.close();
   }
 
   public void setAutoCommit(boolean b) throws SQLException {

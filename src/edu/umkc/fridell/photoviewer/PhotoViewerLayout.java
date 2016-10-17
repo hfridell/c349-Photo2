@@ -13,7 +13,7 @@ public class PhotoViewerLayout extends JFrame {
   JButton nextButton;
   JButton prevButton;
   JTextField pictureNumberTextField = new JTextField("", 4);
-  ImageIcon imageIcon;
+  ImageIcon imageIcon = new ImageIcon();
   JLabel imageLabel = new JLabel("", SwingConstants.CENTER);
   JLabel descriptionText;
   JTextArea descriptionTextArea = new JTextArea(4, 20);

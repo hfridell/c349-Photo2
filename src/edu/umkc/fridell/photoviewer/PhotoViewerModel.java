@@ -8,14 +8,10 @@ import com.google.gson.reflect.TypeToken;
 import javax.swing.*;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileReader;
 import java.io.IOException;
-import java.lang.reflect.Type;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.LinkedList;
 
 import edu.umkc.fridell.database.DbController;
 
@@ -26,6 +22,17 @@ public class PhotoViewerModel {
   private Photo currentPhoto;
   private PhotoViewerLayout layout;
   private int photoCount = 0;
+  private int currentPhotoNumber = 0;
+  private ArrayList<Photo> photos = new ArrayList<>();
+  private JFileChooser fileChooser = new JFileChooser();
+  public PhotoViewerModel(PhotoViewerLayout layout) {
+    this.layout = layout;
+    photoCount = countPhotos();
+    if (photoCount != 0) {
+      currentPhotoNumber = 1;
+    }
+    updateUi();
+  }
 
   private int countPhotos() {
     int count = DbController.getInstance().count("Photo");
@@ -37,20 +44,13 @@ public class PhotoViewerModel {
     }
   }
 
-  private int currentPhotoNumber = 0;
-  private ArrayList<Photo> photos = new ArrayList<>();
-  private JFileChooser fileChooser = new JFileChooser();
-
-  public PhotoViewerModel(PhotoViewerLayout layout) {
-    this.layout = layout;
-    photoCount = countPhotos();
-    if (photoCount != 0) {
-      currentPhotoNumber = 1;
-    }
-    updateUi();
-  }
-
   public void delete() {
+    try {
+      DbController.getInstance().delete("photo", "GUID = '" + currentPhoto.getGuid() + "'");
+
+    } catch (SQLException e) {
+      e.printStackTrace();
+    }
     photoCount--;
     prevButton();
   }
@@ -61,12 +61,11 @@ public class PhotoViewerModel {
     if (returnVal == JFileChooser.APPROVE_OPTION) {
       File file = fileChooser.getSelectedFile();
       try {
-        Photo newPhoto = new Photo(file, currentPhotoNumber);
+        Photo newPhoto = new Photo(file, ++photoCount);
         save();
         currentPhoto = newPhoto;
 
-        photoCount++;
-        nextButton();
+        currentPhotoNumber = photoCount;
         PhotoWriter writer = new PhotoWriter(DbController.getInstance());
         writer.write(newPhoto);
       } catch (IOException e) {
@@ -133,7 +132,9 @@ public class PhotoViewerModel {
 
 
   private void updateUi() {
+
     updateButtons();
+
     if (photoCount == 0 && currentPhoto == null) {
       layout.imageIcon = new ImageIcon("");
       layout.descriptionTextArea.setText(getBundle("PhotoAlbumStrings").getString("DefaultDescription"));
